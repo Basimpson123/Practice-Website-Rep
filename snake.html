@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snake</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      font-family: sans-serif;
+      background: #333;
+    }
+    h1 {
+      font-size: 3rem;
+      color: #fff;
+      margin: 0;
+    }
+    #status {
+      color: #fff;
+      font-size: 1.25rem;
+      margin: 0.5rem 0 1rem;
+      height: 1.5rem;
+    }
+    canvas {
+      background: #555;
+      border-radius: 8px;
+    }
+    button.action {
+      margin-top: 1.5rem;
+      padding: 0.75rem 2rem;
+      font-size: 1rem;
+      background: #888;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button.action:hover {
+      background: #aaa;
+    }
+    .nav {
+      display: flex;
+      gap: 1rem;
+    }
+    .hint {
+      color: #aaa;
+      font-size: 0.9rem;
+      margin-top: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Snake</h1>
+  <div id="status">Score: 0 &nbsp;|&nbsp; Best: 0</div>
+  <canvas id="game" width="400" height="400"></canvas>
+  <div class="hint">Arrow keys or WASD to move &middot; Space to pause</div>
+  <div class="nav">
+    <button class="action" id="reset">Restart</button>
+    <button class="action" onclick="window.location.href='index.html'">Go to Home Page</button>
+  </div>
+
+  <script>
+    // ----- Setup -----
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const resetBtn = document.getElementById('reset');
+
+    const GRID = 20;                       // the board is 20 x 20 squares
+    const CELL = canvas.width / GRID;      // size of one square in pixels
+    const START_SPEED = 120;               // ms between moves (lower = faster)
+    const MIN_SPEED = 60;                  // speed never gets faster than this
+
+    // ----- Game state -----
+    // The snake is an array of {x, y} squares. snake[0] is the head.
+    let snake, direction, nextDirection, food, score, speed, gameOver, paused, started, timer;
+
+    // Best score is remembered in the browser between visits.
+    let best = 0;
+    try { best = Number(localStorage.getItem('snakeBest')) || 0; } catch (e) {}
+
+    function resetGame() {
+      snake = [
+        { x: 10, y: 10 },
+        { x: 9, y: 10 },
+        { x: 8, y: 10 },
+      ];
+      direction = { x: 1, y: 0 };          // moving right
+      nextDirection = direction;
+      score = 0;
+      speed = START_SPEED;
+      gameOver = false;
+      paused = false;
+      started = false;                     // the snake waits for your first key press
+      placeFood();
+      updateStatus();
+      restartTimer();
+      draw();
+    }
+
+    // Put food on a random square that the snake isn't on.
+    function placeFood() {
+      do {
+        food = {
+          x: Math.floor(Math.random() * GRID),
+          y: Math.floor(Math.random() * GRID),
+        };
+      } while (snake.some(part => part.x === food.x && part.y === food.y));
+    }
+
+    function restartTimer() {
+      clearInterval(timer);
+      timer = setInterval(step, speed);
+    }
+
+    // ----- One tick of the game loop -----
+    function step() {
+      if (gameOver || paused || !started) return;
+
+      direction = nextDirection;
+      const head = { x: snake[0].x + direction.x, y: snake[0].y + direction.y };
+
+      // Hit a wall?
+      const hitWall = head.x < 0 || head.x >= GRID || head.y < 0 || head.y >= GRID;
+      // Hit itself? (the last tail square is about to move away, so skip it)
+      const hitSelf = snake.slice(0, -1).some(part => part.x === head.x && part.y === head.y);
+
+      if (hitWall || hitSelf) {
+        endGame();
+        return;
+      }
+
+      snake.unshift(head);                 // add new head at the front
+
+      if (head.x === food.x && head.y === food.y) {
+        score++;
+        if (score > best) {
+          best = score;
+          try { localStorage.setItem('snakeBest', best); } catch (e) {}
+        }
+        // Speed up a little every time you eat
+        speed = Math.max(MIN_SPEED, speed - 3);
+        restartTimer();
+        if (snake.length === GRID * GRID) {
+          endGame(true);
+          return;
+        }
+        placeFood();
+      } else {
+        snake.pop();                       // didn't eat: remove the tail so length stays the same
+      }
+
+      updateStatus();
+      draw();
+    }
+
+    function endGame(won = false) {
+      gameOver = true;
+      clearInterval(timer);
+      statusEl.textContent = won
+        ? `You filled the board! Score: ${score}`
+        : `Game over! Score: ${score}  |  Best: ${best}`;
+      draw();
+    }
+
+    function updateStatus() {
+      if (!started) statusEl.textContent = 'Press an arrow key to start';
+      else if (paused) statusEl.textContent = 'Paused';
+      else statusEl.textContent = `Score: ${score}  |  Best: ${best}`;
+    }
+
+    // ----- Drawing -----
+    function drawSquare(x, y, color, inset = 1) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x * CELL + inset, y * CELL + inset, CELL - inset * 2, CELL - inset * 2);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Food
+      ctx.fillStyle = '#ffd166';
+      ctx.beginPath();
+      ctx.arc(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, CELL / 2 - 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Snake (body first, then head on top)
+      for (let i = snake.length - 1; i >= 0; i--) {
+        const color = i === 0 ? '#7ee8dc' : '#4fd1c5';
+        drawSquare(snake[i].x, snake[i].y, color);
+      }
+
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 32px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2);
+        ctx.font = '16px sans-serif';
+        ctx.fillText('Press Restart or Enter', canvas.width / 2, canvas.height / 2 + 30);
+      }
+    }
+
+    // ----- Input -----
+    const KEY_DIRECTIONS = {
+      ArrowUp: { x: 0, y: -1 }, w: { x: 0, y: -1 },
+      ArrowDown: { x: 0, y: 1 }, s: { x: 0, y: 1 },
+      ArrowLeft: { x: -1, y: 0 }, a: { x: -1, y: 0 },
+      ArrowRight: { x: 1, y: 0 }, d: { x: 1, y: 0 },
+    };
+
+    window.addEventListener('keydown', (e) => {
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+      if (key === ' ') {
+        e.preventDefault();
+        if (!gameOver && started) {
+          paused = !paused;
+          updateStatus();
+        }
+        return;
+      }
+
+      if (key === 'Enter' && gameOver) {
+        resetGame();
+        return;
+      }
+
+      const newDir = KEY_DIRECTIONS[key];
+      if (!newDir) return;
+      e.preventDefault();
+
+      // Don't allow turning straight back into yourself
+      if (newDir.x === -direction.x && newDir.y === -direction.y) return;
+      nextDirection = newDir;
+
+      if (!started && !gameOver) {
+        started = true;
+        updateStatus();
+      }
+    });
+
+    resetBtn.addEventListener('click', () => {
+      resetBtn.blur();                     // so Space doesn't "click" the button again
+      resetGame();
+    });
+
+    resetGame();
+  </script>
+</body>
+</html>
