@@ -75,10 +75,11 @@
     const CELL = canvas.width / GRID;      // size of one square in pixels
     const START_SPEED = 120;               // ms between moves (lower = faster)
     const MIN_SPEED = 60;                  // speed never gets faster than this
+    const FOOD_COUNT = 10;                 // how many food dots are on the board at once
 
     // ----- Game state -----
     // The snake is an array of {x, y} squares. snake[0] is the head.
-    let snake, direction, nextDirection, food, score, speed, gameOver, paused, started, timer;
+    let snake, direction, nextDirection, foods, score, speed, gameOver, paused, started, timer;
 
     // Best score is remembered in the browser between visits.
     let best = 0;
@@ -97,20 +98,27 @@
       gameOver = false;
       paused = false;
       started = false;                     // the snake waits for your first key press
-      placeFood();
+      foods = [];
+      fillFood();
       updateStatus();
       restartTimer();
       draw();
     }
 
-    // Put food on a random square that the snake isn't on.
-    function placeFood() {
-      do {
-        food = {
-          x: Math.floor(Math.random() * GRID),
-          y: Math.floor(Math.random() * GRID),
-        };
-      } while (snake.some(part => part.x === food.x && part.y === food.y));
+    // Is this square taken by the snake or by another food dot?
+    function isTaken(x, y) {
+      return snake.some(part => part.x === x && part.y === y) ||
+             foods.some(f => f.x === x && f.y === y);
+    }
+
+    // Keep adding food on random empty squares until there are FOOD_COUNT dots
+    // (or until there's no empty space left).
+    function fillFood() {
+      while (foods.length < FOOD_COUNT && snake.length + foods.length < GRID * GRID) {
+        const x = Math.floor(Math.random() * GRID);
+        const y = Math.floor(Math.random() * GRID);
+        if (!isTaken(x, y)) foods.push({ x, y });
+      }
     }
 
     function restartTimer() {
@@ -137,7 +145,9 @@
 
       snake.unshift(head);                 // add new head at the front
 
-      if (head.x === food.x && head.y === food.y) {
+      const eaten = foods.findIndex(f => f.x === head.x && f.y === head.y);
+      if (eaten !== -1) {
+        foods.splice(eaten, 1);            // remove the dot that was eaten
         score++;
         if (score > best) {
           best = score;
@@ -150,7 +160,7 @@
           endGame(true);
           return;
         }
-        placeFood();
+        fillFood();                        // add a new dot so there are 10 again
       } else {
         snake.pop();                       // didn't eat: remove the tail so length stays the same
       }
@@ -185,9 +195,11 @@
 
       // Food
       ctx.fillStyle = '#ffd166';
-      ctx.beginPath();
-      ctx.arc(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, CELL / 2 - 3, 0, Math.PI * 2);
-      ctx.fill();
+      for (const f of foods) {
+        ctx.beginPath();
+        ctx.arc(f.x * CELL + CELL / 2, f.y * CELL + CELL / 2, CELL / 2 - 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       // Snake (body first, then head on top)
       for (let i = snake.length - 1; i >= 0; i--) {
